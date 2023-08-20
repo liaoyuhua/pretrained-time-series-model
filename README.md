@@ -1,6 +1,6 @@
-# Train a time series model like BERT
+# Train a pretrained time series model like BERT
 
-An illustration of how to train a time series pretrained model like BERT.
+An illustration of how to train a pretrained time series model like BERT.
 
 ---
 **Principles:**
