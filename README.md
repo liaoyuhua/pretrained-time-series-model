@@ -1,4 +1,4 @@
-# Train a pretrained time series model like BERT
+# Pretrain a Time Series Model like BERT
 
 An illustration of how to train a pretrained time series model like BERT.
 
@@ -17,19 +17,19 @@ Masking is a way to make the model learn the dependency between patches. For exa
 
 Generally, this model is trained in a self-supervised way. Although there exists various self-supervised learning methods for time series representation like contrastive learning (TS2Vec and CoST) and transformer-based methods (TST), this project can be regarded as a simple and effective one.
 
-*In a word, you can think of this project as a Patch-BERT for time series.*
+*In a word, you can think of this project as BERT for time series.*
 
 ---
 **Structure:**
 
-
+<div align=center> <image src="./assets/PTSM.png" width="400px"> </div>
 
 
 
 ---
 **References:**
 
-[1] [BERT](https://arxiv.org/abs/1810.04805): One of the most important pretrained language model.
+[1] [BERT](https://arxiv.org/abs/1810.04805): One of the most important pretrained language models.
 
 [2] [ViT](https://arxiv.org/abs/2010.11929): Patch-based image model, and introduce the transformer to the computer vision field.
 
@@ -39,4 +39,4 @@ Generally, this model is trained in a self-supervised way. Although there exists
 
 [5] [CoST](https://arxiv.org/abs/2202.01575): Distangle the time series representation with contrastive learning.
 
-[6] [TST](https://arxiv.org/abs/2010.02803): Classic transformer-based self-supervised learning method for time series, which is highly similar to this project, but it is not powered by patch mask.
+[6] [TST](https://arxiv.org/abs/2010.02803): Classic transformer-based self-supervised learning method for time series, which is highly similar to this project, but it is not powered by patch embedding and patch mask.
