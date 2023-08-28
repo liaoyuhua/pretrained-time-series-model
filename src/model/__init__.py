@@ -1,5 +1,6 @@
-from typing import Optional
+from typing import Any, Optional, Tuple, List
 import math
+import random
 import torch
 from torch import nn
 
@@ -35,35 +36,59 @@ class PatchEmbed(nn.Module):
             self.norm = nn.Identity()
 
     def forward(self, x, **kwargs):
-        B, C, H, W = x.shape
-        assert (
-            H == self.input_size[0] and W == self.input_size[1]
-        ), f"input size {H}*{W} doesn't match model ({self.input_size[0]}*{self.input_size[1]})."
-        x = (
-            self.project_layer(x).flatten(2).transpose(1, 2)
-        )  # [batch_size, num_patches, embed_size]
-
+        B, N, L, C = x.shape
+        x = x.unsqueeze(-1).transpose(2, 3)  # [B, N, C, L, 1]
+        x = x.reshape(B * N, C, L, 1)  # [B*N, C, L, 1]
+        x = self.project_layer(x)  # [B*N, E, P, 1]
         x = self.norm(x)
+        x = x.squeeze(-1).view(B, N, self.embed_dim, -1)  # [B, N, E, P]
+        x = x.transpose(2, 3)  # [B, N, P, E]
         return x
 
 
-class PatchMask(nn.Module):
-    def __init__(self, num_patches: int, mask_ratio: float):
+class PatchMask:
+    def __init__(self, num_patches: int, mask_ratio: float, patch_size: int):
         """
         Args:
             num_patches: number of patches
             mask_ratio: ratio of patches to be masked
+            patch_size: patch size
         """
-        super().__init__()
         self.num_patches = num_patches
         self.mask_ratio = mask_ratio
+        self.patch_size = patch_size
+        self.num_masked_patches = int(num_patches * mask_ratio)
 
-        self.mask = torch.full((num_patches, num_patches), False)
-        self.mask[torch.rand(num_patches, num_patches) < mask_ratio] = True
+    def __call__(self) -> Tuple[List[int]]:
+        """
+        Returns:
+            mask_idx: list of indices of masked time steps
+            unmasked_idx: list of indices of unmasked time steps
+            mask_patch_idx: list of indices of masked patches
+            unmasked_patch_idx: list of indices of unmasked patches
+        """
+        mask = list(range(int(self.num_patches)))
+        random.shuffle(mask)
+        self.masked_patch_idx = sorted(mask[: self.num_masked_patches])
+        self.masked_idx = [
+            j
+            for i in self.mask_patch_idx
+            for j in list(range(i * self.patch_size, (i + 1) * self.patch_size))
+        ]
 
-    def forward(self, x, **kwargs):
-        x = x.masked_fill(self.mask, 0)
-        return x
+        self.unmasked_patch_idx = sorted(mask[self.num_masked_patches :])
+        self.unmasked_idx = [
+            j
+            for i in self.unmasked_patch_idx
+            for j in list(range(i * self.patch_size, (i + 1) * self.patch_size))
+        ]
+
+        return (
+            self.masked_idx,
+            self.unmasked_idx,
+            self.masked_patch_idx,
+            self.unmasked_patch_idx,
+        )
 
 
 class TransformerLayers(nn.Module):
@@ -101,8 +126,8 @@ class TransformerLayers(nn.Module):
 
     def forward(self, x):
         """
-        input: [B, N, P, E]
-        output: [B, N, P, E]
+        input: [B, N, L, E]
+        output: [B, N, L, E]
         """
         x = x * math.sqrt(self.embed_dim)
         x = self.encoder(x)
@@ -151,6 +176,8 @@ class PTSM(nn.Module):
         self.mask_ratio = mask_ratio
         self.norm = norm
 
+        self.inp_embed = nn.Linear(in_channels, embed_dim)
+
         self.patch_embed = PatchEmbed(
             patch_size=patch_size,
             in_channels=in_channels,
@@ -162,7 +189,9 @@ class PTSM(nn.Module):
             input_len, embed_dim
         )  # TODO: better way to embed position
 
-        self.embed_mask = PatchMask(num_patches=self.num_patches, mask_ratio=mask_ratio)
+        self.embed_mask = PatchMask(
+            num_patches=self.num_patches, mask_ratio=mask_ratio, patch_size=patch_size
+        )
 
         self.encoder = TransformerLayers(
             embed_dim=embed_dim,
@@ -174,15 +203,23 @@ class PTSM(nn.Module):
         )
 
         # project to input shape
-        self.head = nn.Linear(embed_dim, patch_size)
+        self.head = nn.Linear(embed_dim, in_channels)
 
-    def forward(self, x, **kwargs):
+    def forward(self, x):
         """
-        input: [B, N, C]
-        output: [B, N, C]
+        input: [B, N, L, C]
+        output: [B, N, L, C]
         """
-        x = self.patch_embed(x)
-        x = x + self.pos_embed.weight
-        x = self.embed_mask(x)
+        pa_x = self.patch_embed(x).repeat_interleave(
+            self.patch_size, dim=2
+        )  # [B, N, L, E]
+        i_x = self.inp_embed(x)  # [B, N, L, E]
+        po_x = self.pos_embed(x)  # [B, N, L, E]
+        x = pa_x + i_x + po_x  # [B, N, L, E]
+
+        masked_idx, unmasked_idx, _, _ = self.embed_mask()
+        x[:, :, masked_idx, :] = 0.0
+
         x = self.encoder(x)
+        x = self.head(x)
         return x
