@@ -316,7 +316,6 @@ class PretrainDataset(Dataset):
         Returns:
             Dict[str, torch.Tensor]: minibatch
         """
-
         # lengths = torch.tensor([len(batch["target"]) for batch in batches])
         mask = torch.stack([batch["mask"] for batch in batches])
 
@@ -336,12 +335,12 @@ class PretrainDataset(Dataset):
         )
 
         for i, batch in enumerate(batches):
-            targets[mask[i] == 0] = batch["target"]
-            time_index[mask[i] == 0] = batch["time_index"]
-            group_id[mask[i] == 0] = batch["group_id"]
+            targets[i, mask[i] == 0] = batch["target"]
+            time_index[i, mask[i] == 0] = batch["time_index"]
+            group_id[i, mask[i] == 0] = batch["group_id"]
 
         return dict(
-            target=targets,
+            target=targets.unsqueeze(-1),
             time_index=time_index,
             group_id=group_id,
             mask=mask,
